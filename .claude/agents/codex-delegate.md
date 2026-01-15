@@ -1,6 +1,6 @@
 ---
 name: codex-delegate
-description: Delegate complex, large-scale tasks to OpenAI Codex CLI. Use when facing tasks that require deep codebase understanding, extensive refactoring across many files, or when GPT models might provide better results for specific problems. Triggers include "Codexに任せて", "大規模なリファクタ", "コードベース全体を", "複雑な実装", or when you judge the task complexity warrants a second opinion from another AI.
+description: "[OPTIONAL] Delegate complex, large-scale tasks to OpenAI Codex CLI. Requires Codex CLI to be installed and authenticated. Use ONLY when user explicitly requests Codex delegation with phrases like \"Codexに任せて\", \"Codexで実行\", \"Codex使って\". Do NOT use automatically - this agent is triggered by explicit user request only."
 tools: Bash, Read, Glob, Grep
 model: opus
 ---

@@ -37,7 +37,7 @@ Claude Code と Codex CLI の両方で利用可能です。
 | **lib-researcher** | ライブラリ調査・文書化 | 「このライブラリについて調べて」 |
 | **debugger** | エラー調査・修正 | 「エラーが出た」「動かない」 |
 | **refactorer** | リファクタリング | 「シンプルにして」「整理して」 |
-| **codex-delegate** | 複雑・大規模タスクをCodexに委譲 | 「Codexに任せて」「大規模なリファクタ」 |
+| **codex-delegate** | [任意] Codex CLIに委譲 | 「Codexに任せて」「Codex使って」 |
 
 ### Skills（自動発動）
 
