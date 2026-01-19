@@ -14,9 +14,10 @@ LLM/エージェント開発プロジェクト
 - **パッケージ管理**: uv（必須）
 - **開発ツール**:
   - ruff（リント・フォーマット）
-  - mypy（型チェック）
+  - ty（型チェック）
   - poe / poethepoet（タスクランナー）
   - pytest（テスト）
+  - marimo（ノートブック環境，オプション）
 - **環境管理**: venv（uv経由で管理）
 - **主要ライブラリ**: <!-- 使用ライブラリを記入 -->
 
@@ -53,12 +54,39 @@ Claude Code と Codex CLI の両方で利用可能です。
 
 `/command` で呼び出すコマンド：
 
+#### Claude Code コマンド
+
 | コマンド | 用途 |
 |---------|------|
-| `/research-lib` | ライブラリを調査してドキュメント化 |
-| `/simplify` | 指定コードをシンプルにリファクタリング |
+| `/init` | プロジェクト分析・AGENTS.md 生成 |
+| `/plan <feature>` | 実装計画の立案 |
+| `/tdd <feature>` | テスト駆動開発ワークフロー |
+| `/research-lib <library>` | ライブラリを調査してドキュメント化 |
+| `/simplify <path>` | 指定コードをシンプルにリファクタリング |
 | `/update-design` | 会話から設計ドキュメントを更新 |
 | `/update-lib-docs` | ライブラリドキュメントを最新化 |
+
+#### Codex CLI プロンプト
+
+> **注意**: 使用するには `cp .codex/prompts/*.md ~/.codex/prompts/` でユーザーレベルにコピーが必要
+
+| コマンド | 用途 |
+|---------|------|
+| `/prompts:analyze <topic>` | 問題を深く分析し、選択肢とトレードオフを整理 |
+| `/prompts:review-architecture <path>` | アーキテクチャをレビュー、懸念点と推奨事項を提示 |
+| `/prompts:consult <question>` | Claude Code からの相談に回答 |
+| `/prompts:update-design` | 設計判断を整理して記録 |
+
+### Rules（常時適用）
+
+常に従うべきルール（`.claude/rules/`）：
+
+| ルール | 内容 |
+|--------|------|
+| **coding-principles** | シンプルさ，単一責任，早期リターン，型ヒント |
+| **dev-environment** | uv，ruff，ty，marimo の使用方法 |
+| **security** | 機密情報管理，入力検証，SQLi/XSS防止 |
+| **testing** | TDD，AAA パターン，カバレッジ 80% |
 
 ---
 
@@ -69,6 +97,9 @@ Claude Code と Codex CLI の両方で利用可能です。
 
 各ライブラリの機能・制約・使用パターン:
 - `.claude/docs/libraries/`
+
+コーディングルール（常時適用）:
+- `.claude/rules/`
 
 ## 記憶の整理（自動）
 
@@ -114,6 +145,11 @@ Claude Code と Codex CLI の両方で利用可能です。
 .claude/                   # Claude Code（System 1）の設定・知識ベース
 ├── settings.json          # 権限設定
 ├── agents/                # サブエージェント
+├── rules/                 # 常時適用ルール
+│   ├── coding-principles.md
+│   ├── dev-environment.md
+│   ├── security.md
+│   └── testing.md
 ├── docs/                  # 知識ベース（実体）
 │   ├── DESIGN.md          # 設計ドキュメント
 │   └── libraries/         # ライブラリドキュメント
@@ -126,8 +162,8 @@ Claude Code と Codex CLI の両方で利用可能です。
 └── docs -> ../.claude/docs   # 知識ベースへのリンク
 
 .codex/                    # Codex CLI（System 2）の設定
-├── config.toml            # 設定ファイル
-└── commands/              # 分析・判断系コマンド
+├── skills -> ../.agent/skills  # 共通スキル
+└── prompts/               # カスタムプロンプト（~/.codex/prompts/ へコピー）
 
 src/                       # ソースコード
 tests/                     # テスト
@@ -149,13 +185,13 @@ uv sync                    # 依存関係同期
 # タスク実行（poethepoet）
 poe lint                   # ruff check + format
 poe test                   # pytest実行
-poe typecheck              # mypy実行
+poe typecheck              # ty実行
 poe all                    # 全チェック実行
 
 # 個別実行
 uv run ruff check .
 uv run ruff format .
-uv run mypy src/
+uv run ty check src/
 uv run pytest -v --tb=short
 ```
 

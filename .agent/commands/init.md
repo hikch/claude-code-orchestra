@@ -66,16 +66,41 @@ Claude Code と Codex CLI の両方で利用可能です。
 | **design-tracker** | 設計決定の記録 | 「記録して」 |
 | **mcp-builder** | MCPサーバー開発ガイド | 「MCPサーバーを作りたい」 |
 | **skill-creator** | 新規スキル作成 | 「スキルを作りたい」 |
-| **codex-auto** | [任意] 大規模タスクをCodexに委譲 | 「Codexに任せて」 |
+| **codex-system** | 複雑なタスクを Codex CLI (System 2) に委譲 | 「深く考えて」「second opinion」 |
 
 ### Commands（明示的呼び出し）
 
+#### Claude Code コマンド
+
 | コマンド | 用途 |
 |---------|------|
-| `/research-lib` | ライブラリを調査してドキュメント化 |
-| `/simplify` | 指定コードをシンプルにリファクタリング |
+| `/init` | プロジェクト分析・AGENTS.md 生成 |
+| `/plan <feature>` | 実装計画の立案 |
+| `/tdd <feature>` | テスト駆動開発ワークフロー |
+| `/research-lib <library>` | ライブラリを調査してドキュメント化 |
+| `/simplify <path>` | 指定コードをシンプルにリファクタリング |
 | `/update-design` | 会話から設計ドキュメントを更新 |
 | `/update-lib-docs` | ライブラリドキュメントを最新化 |
+
+#### Codex CLI プロンプト
+
+> 使用するには `~/.codex/prompts/` へコピーが必要
+
+| コマンド | 用途 |
+|---------|------|
+| `/prompts:analyze <topic>` | 問題を深く分析し、選択肢とトレードオフを整理 |
+| `/prompts:review-architecture <path>` | アーキテクチャをレビュー、懸念点と推奨事項を提示 |
+| `/prompts:consult <question>` | Claude Code からの相談に回答 |
+| `/prompts:update-design` | 設計判断を整理して記録 |
+
+### Rules（常時適用）
+
+| ルール | 内容 |
+|--------|------|
+| **coding-principles** | シンプルさ，単一責任，早期リターン，型ヒント |
+| **dev-environment** | uv，ruff，ty，marimo の使用方法 |
+| **security** | 機密情報管理，入力検証，SQLi/XSS防止 |
+| **testing** | TDD，AAA パターン，カバレッジ 80% |
 
 ---
 
@@ -83,6 +108,7 @@ Claude Code と Codex CLI の両方で利用可能です。
 
 - 設計決定・アーキテクチャ: `.claude/docs/DESIGN.md`
 - ライブラリ文書: `.claude/docs/libraries/`
+- コーディングルール: `.claude/rules/`
 
 ---
 
