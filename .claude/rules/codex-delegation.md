@@ -30,7 +30,7 @@ Consult Codex when user says:
 | 「〜を作りたい」「〜を実装して」 | "Build X" "Implement X" |
 | 「考えて」「分析して」「深く考えて」 | "Think" "Analyze" "Think deeper" |
 
-## When NOT to Consult Codex
+## When NOT to Consult
 
 Skip Codex for simple, straightforward tasks:
 
