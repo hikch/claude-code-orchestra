@@ -5,6 +5,7 @@ Checkpoint script: Read CLI logs and update agent context files.
 Usage:
     python checkpoint.py [--since YYYY-MM-DD]           # Session history mode
     python checkpoint.py --full [--since YYYY-MM-DD]    # Full checkpoint mode
+    python checkpoint.py --full --analyze               # Full checkpoint + skill analysis
 
 Session History Mode (default):
     Updates CLAUDE.md, .codex/AGENTS.md, .gemini/GEMINI.md with CLI consultation history.
@@ -15,6 +16,10 @@ Full Checkpoint Mode (--full):
     - CLI tool consultations (Codex/Gemini)
     - Design decisions changes
     - Session summary
+
+Analyze Mode (--full --analyze):
+    After creating checkpoint, outputs a prompt for AI analysis to extract
+    reusable skill patterns. Use with subagent to analyze and suggest new skills.
 """
 
 import argparse
@@ -392,6 +397,75 @@ def generate_full_checkpoint(since: str | None = None) -> Path | None:
     return checkpoint_file
 
 
+def generate_skill_analysis_prompt(checkpoint_content: str) -> str:
+    """Generate a prompt for AI to analyze checkpoint and suggest skills."""
+    return f'''Analyze the following checkpoint and identify reusable work patterns that could become skills.
+
+A "skill" is a repeatable workflow pattern that can be triggered by specific phrases and executed consistently.
+
+## Checkpoint Content
+
+{checkpoint_content}
+
+## Analysis Instructions
+
+1. **Identify Patterns**: Look for regularities in:
+   - Sequences of commits that form a logical workflow
+   - File change patterns (e.g., test + implementation together)
+   - CLI consultation patterns (design → implementation → review)
+   - Multi-step operations that could be templated
+
+2. **For each potential skill, provide**:
+   - **Name**: Short, descriptive name (e.g., "tdd-feature", "research-implement")
+   - **Description**: What this skill accomplishes
+   - **Trigger phrases**: When should this skill be invoked (Japanese + English)
+   - **Workflow steps**: Ordered list of actions
+   - **Files typically involved**: Patterns like `tests/**/*.py`, `src/**/*.py`
+   - **Confidence**: How confident are you this is a reusable pattern (0.0-1.0)
+   - **Evidence**: What in the checkpoint suggests this pattern
+
+3. **Output format**:
+
+```markdown
+## Skill Suggestions
+
+### Skill 1: {{name}}
+**Confidence:** {{0.0-1.0}}
+**Description:** {{description}}
+
+**Trigger phrases:**
+- "{{Japanese phrase}}"
+- "{{English phrase}}"
+
+**Workflow:**
+1. {{step 1}}
+2. {{step 2}}
+3. {{step 3}}
+
+**Files involved:**
+- `{{pattern 1}}`
+- `{{pattern 2}}`
+
+**Evidence:**
+- {{evidence from checkpoint}}
+```
+
+4. **Quality criteria**:
+   - Only suggest skills with confidence >= 0.6
+   - Skip trivial patterns (single file edits, simple commits)
+   - Focus on multi-step workflows that save time when repeated
+   - Consider what would be valuable to automate in future sessions
+
+Provide your analysis:'''
+
+
+def save_skill_suggestions(checkpoint_file: Path, suggestions: str) -> Path:
+    """Save skill suggestions to a file next to the checkpoint."""
+    suggestions_file = checkpoint_file.with_suffix(".skills.md")
+    suggestions_file.write_text(suggestions, encoding="utf-8")
+    return suggestions_file
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Checkpoint session context",
@@ -401,6 +475,7 @@ Examples:
   python checkpoint.py                    # Update session history in agent configs
   python checkpoint.py --full             # Create full checkpoint file
   python checkpoint.py --full --since 2026-01-26  # Full checkpoint since date
+  python checkpoint.py --full --analyze   # Full checkpoint + skill analysis prompt
         """,
     )
     parser.add_argument(
@@ -411,6 +486,11 @@ Examples:
         "--full",
         action="store_true",
         help="Create full checkpoint file with git history and file changes",
+    )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Output skill analysis prompt (use with --full)",
     )
     args = parser.parse_args()
 
@@ -424,6 +504,23 @@ Examples:
             print("  - Git commits and file changes")
             print("  - CLI tool consultations (Codex/Gemini)")
             print("  - Session summary")
+
+            if args.analyze:
+                # Generate skill analysis prompt
+                checkpoint_content = checkpoint_file.read_text(encoding="utf-8")
+                prompt = generate_skill_analysis_prompt(checkpoint_content)
+
+                # Save prompt to file
+                prompt_file = checkpoint_file.with_suffix(".analyze-prompt.md")
+                prompt_file.write_text(prompt, encoding="utf-8")
+
+                print(f"\n{'='*60}")
+                print("SKILL ANALYSIS MODE")
+                print(f"{'='*60}")
+                print(f"\nAnalysis prompt saved to: {prompt_file}")
+                print("\nNext step: Use a subagent to analyze and suggest skills:")
+                print(f'  Read the prompt file and pass it to a subagent for analysis.')
+                print(f"\nThe subagent will identify reusable patterns and suggest new skills.")
         else:
             print("Failed to create checkpoint.")
         return

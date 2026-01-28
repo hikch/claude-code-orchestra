@@ -2,15 +2,15 @@
 name: checkpointing
 description: |
   Save session context to agent configuration files or create full checkpoint files.
-  Supports two modes: session history (default) and full checkpoint (--full).
-  Full checkpoint includes git commits, file changes, and CLI consultations.
+  Supports three modes: session history (default), full checkpoint (--full),
+  and skill analysis (--full --analyze) for extracting reusable patterns.
 metadata:
-  short-description: Checkpoint session context with git history support
+  short-description: Checkpoint session context with skill extraction support
 ---
 
 # Checkpointing — セッションコンテキストの永続化
 
-**セッション中の作業履歴を保存します。2つのモードをサポート。**
+**セッション中の作業履歴を保存し、再利用可能なスキルパターンを発見します。**
 
 ## モード
 
@@ -53,6 +53,32 @@ CLI相談履歴を各エージェントの設定ファイルに追記。
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Mode 3: Skill Analysis（--full --analyze）
+
+チェックポイントからスキル化できるパターンを発見。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  /checkpointing --full --analyze                            │
+│                      ↓                                      │
+│  1. Full Checkpoint を生成                                   │
+│  2. 分析用プロンプトを生成                                    │
+│     → .claude/checkpoints/YYYY-MM-DD-HHMMSS.analyze-prompt.md│
+│                      ↓                                      │
+│  3. サブエージェントでAI分析を実行                            │
+│     → 作業パターンを発見                                      │
+│     → スキル候補を提案                                        │
+│                      ↓                                      │
+│  4. 新スキルを .claude/skills/ に追加                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**発見するパターン例:**
+- テスト→実装の繰り返し（TDDワークフロー）
+- リサーチ→設計→実装の流れ
+- 特定ファイルセットの同時変更
+- CLI相談→コード変更のシーケンス
+
 ## 使い方
 
 ```bash
@@ -62,9 +88,24 @@ CLI相談履歴を各エージェントの設定ファイルに追記。
 # Full Checkpoint モード
 /checkpointing --full
 
+# Skill Analysis モード（推奨）
+/checkpointing --full --analyze
+
 # 期間指定
 /checkpointing --since "2026-01-26"
-/checkpointing --full --since "2026-01-26"
+/checkpointing --full --analyze --since "2026-01-26"
+```
+
+### Skill Analysis の実行フロー
+
+```bash
+# Step 1: チェックポイント + 分析プロンプト生成
+python checkpoint.py --full --analyze
+
+# Step 2: サブエージェントで分析（Claudeが自動実行）
+# → 分析プロンプトを読み込み
+# → スキル候補を提案
+# → ユーザーが承認したらスキルを生成
 ```
 
 ## 処理内容
@@ -146,10 +187,11 @@ CLI相談履歴を各エージェントの設定ファイルに追記。
 
 | タイミング | 推奨モード |
 |-----------|-----------|
-| セッション終了前 | `--full` |
+| セッション終了前 | `--full --analyze` |
 | 重要な設計決定後 | `--full` |
-| 大きな機能実装完了後 | `--full` |
+| 大きな機能実装完了後 | `--full --analyze` |
 | 長時間作業の区切り | `--full` |
+| 繰り返しパターンを感じた時 | `--full --analyze` |
 | 日次の軽い記録 | デフォルト |
 
 ## 注意事項
@@ -159,3 +201,5 @@ CLI相談履歴を各エージェントの設定ファイルに追記。
 - ログファイル自体は変更されません（読み取りのみ）
 - Full Checkpoint は `.claude/checkpoints/` に蓄積されます
 - Git未初期化プロジェクトでもCLIログ部分は動作します
+- `--analyze` で生成されたスキル提案は人間がレビューしてから採用すること
+- スキル分析はパターンを固定せず、AIが自由に発見する設計
