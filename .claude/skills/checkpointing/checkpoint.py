@@ -3,23 +3,32 @@
 Checkpoint script: Read CLI logs and update agent context files.
 
 Usage:
-    python checkpoint.py [--since YYYY-MM-DD]
+    python checkpoint.py [--since YYYY-MM-DD]           # Session history mode
+    python checkpoint.py --full [--since YYYY-MM-DD]    # Full checkpoint mode
 
-Updates:
-    - CLAUDE.md
-    - .codex/AGENTS.md
-    - .gemini/GEMINI.md
+Session History Mode (default):
+    Updates CLAUDE.md, .codex/AGENTS.md, .gemini/GEMINI.md with CLI consultation history.
+
+Full Checkpoint Mode (--full):
+    Creates comprehensive checkpoint file in .claude/checkpoints/ including:
+    - Git commits and file changes
+    - CLI tool consultations (Codex/Gemini)
+    - Design decisions changes
+    - Session summary
 """
 
 import argparse
 import json
 import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 LOG_FILE = PROJECT_ROOT / ".claude" / "logs" / "cli-tools.jsonl"
+CHECKPOINTS_DIR = PROJECT_ROOT / ".claude" / "checkpoints"
+DESIGN_FILE = PROJECT_ROOT / ".claude" / "docs" / "DESIGN.md"
 
 CONTEXT_FILES = {
     "claude": PROJECT_ROOT / "CLAUDE.md",
@@ -56,6 +65,121 @@ def parse_logs(since: str | None = None) -> list[dict]:
                 continue
 
     return entries
+
+
+def run_git_command(args: list[str]) -> str | None:
+    """Run a git command and return output, or None if failed."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return None
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def get_git_commits(since: str | None = None) -> list[dict]:
+    """Get git commits since the specified date."""
+    args = ["log", "--pretty=format:%H|%ai|%s", "-n", "100"]
+    if since:
+        args.extend(["--since", since])
+
+    output = run_git_command(args)
+    if not output:
+        return []
+
+    commits = []
+    for line in output.split("\n"):
+        if not line:
+            continue
+        parts = line.split("|", 2)
+        if len(parts) == 3:
+            commits.append({
+                "hash": parts[0][:7],
+                "date": parts[1],
+                "message": parts[2],
+            })
+    return commits
+
+
+def get_file_changes(since: str | None = None) -> dict[str, list[str]]:
+    """Get file changes (created, modified, deleted) since the specified date."""
+    changes: dict[str, list[str]] = {"created": [], "modified": [], "deleted": []}
+
+    if since:
+        args = ["log", "--since", since, "--name-status", "--pretty=format:"]
+    else:
+        args = ["diff", "--name-status", "HEAD~10", "HEAD"]
+
+    output = run_git_command(args)
+    if not output:
+        return changes
+
+    seen: set[str] = set()
+    for line in output.split("\n"):
+        line = line.strip()
+        if not line or "\t" not in line:
+            continue
+
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+
+        status, filepath = parts[0], parts[1]
+        if filepath in seen:
+            continue
+        seen.add(filepath)
+
+        if status.startswith("A"):
+            changes["created"].append(filepath)
+        elif status.startswith("M"):
+            changes["modified"].append(filepath)
+        elif status.startswith("D"):
+            changes["deleted"].append(filepath)
+
+    return changes
+
+
+def get_file_stats(since: str | None = None) -> dict[str, tuple[int, int]]:
+    """Get line additions/deletions per file."""
+    if since:
+        args = ["log", "--since", since, "--numstat", "--pretty=format:"]
+    else:
+        args = ["diff", "--numstat", "HEAD~10", "HEAD"]
+
+    output = run_git_command(args)
+    if not output:
+        return {}
+
+    stats: dict[str, tuple[int, int]] = {}
+    for line in output.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+
+        added, deleted, filepath = parts
+        try:
+            add_count = int(added) if added != "-" else 0
+            del_count = int(deleted) if deleted != "-" else 0
+            if filepath in stats:
+                prev = stats[filepath]
+                stats[filepath] = (prev[0] + add_count, prev[1] + del_count)
+            else:
+                stats[filepath] = (add_count, del_count)
+        except ValueError:
+            continue
+
+    return stats
 
 
 def summarize_entries(entries: list[dict]) -> dict[str, list[dict]]:
@@ -132,12 +256,179 @@ def update_context_file(file_path: Path, session_history: str) -> bool:
     return True
 
 
+def generate_full_checkpoint(since: str | None = None) -> Path | None:
+    """Generate a comprehensive checkpoint file."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
+    checkpoint_file = CHECKPOINTS_DIR / f"{timestamp}.md"
+
+    # Ensure checkpoints directory exists
+    CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Gather data
+    entries = parse_logs(since)
+    commits = get_git_commits(since)
+    file_changes = get_file_changes(since)
+    file_stats = get_file_stats(since)
+
+    # Count CLI consultations
+    codex_count = sum(1 for e in entries if e.get("tool") == "codex")
+    gemini_count = sum(1 for e in entries if e.get("tool") == "gemini")
+
+    # Build checkpoint content
+    lines: list[str] = []
+
+    # Header
+    lines.append(f"# Checkpoint: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    lines.append("")
+
+    # Summary
+    lines.append("## Summary")
+    lines.append("")
+    total_files = (
+        len(file_changes["created"])
+        + len(file_changes["modified"])
+        + len(file_changes["deleted"])
+    )
+    lines.append(f"- **Commits**: {len(commits)}")
+    lines.append(
+        f"- **Files changed**: {total_files} "
+        f"({len(file_changes['modified'])} modified, "
+        f"{len(file_changes['created'])} created, "
+        f"{len(file_changes['deleted'])} deleted)"
+    )
+    lines.append(f"- **Codex consultations**: {codex_count}")
+    lines.append(f"- **Gemini researches**: {gemini_count}")
+    if since:
+        lines.append(f"- **Since**: {since}")
+    lines.append("")
+
+    # Git History
+    lines.append("## Git History")
+    lines.append("")
+
+    if commits:
+        lines.append("### Commits")
+        lines.append("")
+        for commit in commits[:20]:  # Limit to 20 commits
+            lines.append(f"- `{commit['hash']}` {commit['message']}")
+        if len(commits) > 20:
+            lines.append(f"- ... and {len(commits) - 20} more commits")
+        lines.append("")
+
+    # File Changes
+    lines.append("### File Changes")
+    lines.append("")
+
+    if file_changes["created"]:
+        lines.append("**Created:**")
+        for f in file_changes["created"][:15]:
+            stat = file_stats.get(f, (0, 0))
+            lines.append(f"- `{f}` (+{stat[0]})")
+        if len(file_changes["created"]) > 15:
+            lines.append(f"- ... and {len(file_changes['created']) - 15} more files")
+        lines.append("")
+
+    if file_changes["modified"]:
+        lines.append("**Modified:**")
+        for f in file_changes["modified"][:15]:
+            stat = file_stats.get(f, (0, 0))
+            lines.append(f"- `{f}` (+{stat[0]}, -{stat[1]})")
+        if len(file_changes["modified"]) > 15:
+            lines.append(f"- ... and {len(file_changes['modified']) - 15} more files")
+        lines.append("")
+
+    if file_changes["deleted"]:
+        lines.append("**Deleted:**")
+        for f in file_changes["deleted"][:15]:
+            lines.append(f"- `{f}`")
+        if len(file_changes["deleted"]) > 15:
+            lines.append(f"- ... and {len(file_changes['deleted']) - 15} more files")
+        lines.append("")
+
+    if not any(file_changes.values()):
+        lines.append("No file changes detected.")
+        lines.append("")
+
+    # CLI Tool Consultations
+    lines.append("## CLI Tool Consultations")
+    lines.append("")
+
+    codex_entries = [e for e in entries if e.get("tool") == "codex"]
+    gemini_entries = [e for e in entries if e.get("tool") == "gemini"]
+
+    if codex_entries:
+        lines.append(f"### Codex ({len(codex_entries)} consultations)")
+        lines.append("")
+        for entry in codex_entries[:10]:
+            status = "✓" if entry.get("success", False) else "✗"
+            prompt = entry.get("prompt", "")[:80].replace("\n", " ")
+            lines.append(f"- {status} {prompt}...")
+        if len(codex_entries) > 10:
+            lines.append(f"- ... and {len(codex_entries) - 10} more consultations")
+        lines.append("")
+
+    if gemini_entries:
+        lines.append(f"### Gemini ({len(gemini_entries)} researches)")
+        lines.append("")
+        for entry in gemini_entries[:10]:
+            status = "✓" if entry.get("success", False) else "✗"
+            prompt = entry.get("prompt", "")[:80].replace("\n", " ")
+            lines.append(f"- {status} {prompt}...")
+        if len(gemini_entries) > 10:
+            lines.append(f"- ... and {len(gemini_entries) - 10} more researches")
+        lines.append("")
+
+    if not entries:
+        lines.append("No CLI tool consultations recorded.")
+        lines.append("")
+
+    # Footer
+    lines.append("---")
+    lines.append(f"*Generated by checkpointing skill at {timestamp}*")
+
+    # Write checkpoint file
+    checkpoint_file.write_text("\n".join(lines), encoding="utf-8")
+
+    return checkpoint_file
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Checkpoint session context")
-    parser.add_argument("--since", help="Only include logs since this date (YYYY-MM-DD)")
+    parser = argparse.ArgumentParser(
+        description="Checkpoint session context",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python checkpoint.py                    # Update session history in agent configs
+  python checkpoint.py --full             # Create full checkpoint file
+  python checkpoint.py --full --since 2026-01-26  # Full checkpoint since date
+        """,
+    )
+    parser.add_argument(
+        "--since",
+        help="Only include data since this date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Create full checkpoint file with git history and file changes",
+    )
     args = parser.parse_args()
 
-    # Parse logs
+    if args.full:
+        # Full checkpoint mode
+        print("Creating full checkpoint...")
+        checkpoint_file = generate_full_checkpoint(args.since)
+        if checkpoint_file:
+            print(f"\nCheckpoint created: {checkpoint_file}")
+            print("\nCheckpoint includes:")
+            print("  - Git commits and file changes")
+            print("  - CLI tool consultations (Codex/Gemini)")
+            print("  - Session summary")
+        else:
+            print("Failed to create checkpoint.")
+        return
+
+    # Session history mode (default)
     entries = parse_logs(args.since)
     if not entries:
         print("No log entries found.")
