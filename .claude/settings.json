@@ -1,5 +1,5 @@
 {
-  "$schema": "https://code.claude.com/schemas/settings.json",
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -87,8 +87,7 @@
       "Glob(*)",
       "Grep(*)",
       "LS(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
+      "WebFetch(domain:*)",
       "Task(*)",
       "Skill(*)",
       "TodoRead(*)",
